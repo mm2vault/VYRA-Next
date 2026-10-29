@@ -51,4 +51,8 @@ The goal is to reuse the existing playback behavior where technically and legall
 
 ## Current status
 
-Audit only. No upstream playback source has been copied into VYRA-Next yet, and the current mini-player remains a visual prototype. The old VYRA repository has not been modified.
+- The audit and upstream GPL-3.0 license have been committed.
+- VYRA-Next now has an independent Media3 `PlaybackService` shell and matching service manifest entry.
+- The current mini-player is still a visual prototype; it is not yet connected to a MediaController or a real track.
+- No upstream playback source has been copied into VYRA-Next yet.
+- The old VYRA repository has not been modified.
