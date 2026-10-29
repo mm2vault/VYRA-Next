@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.mm2vault.vyra"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.mm2vault.vyra"
