@@ -1,10 +1,15 @@
 package com.mm2vault.vyra
 
-import android.os.Bundle
 import android.content.ComponentName
+import android.net.Uri
+import android.os.Bundle
+import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -42,11 +47,51 @@ private val Glass = Color(0x20FFFFFF)
 class MainActivity : ComponentActivity() {
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var mediaController: MediaController? = null
+    private var pendingAudioUri: Uri? = null
+    private var pendingAudioTitle: String? = null
+
     private val isPlayingState = mutableStateOf(false)
+    private val trackTitleState = mutableStateOf("No track selected")
+    private val trackArtistState = mutableStateOf("Open a local audio file")
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             isPlayingState.value = isPlaying
+        }
+
+        override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
+            mediaMetadata.title?.toString()?.let { trackTitleState.value = it }
+            mediaMetadata.artist?.toString()?.let { trackArtistState.value = it }
+        }
+
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            mediaItem?.mediaMetadata?.let {
+                it.title?.toString()?.let { title -> trackTitleState.value = title }
+                it.artist?.toString()?.let { artist -> trackArtistState.value = artist }
+            }
+        }
+    }
+
+    private val audioPicker = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            val title = queryDisplayName(uri)
+            val controller = mediaController
+            if (controller == null) {
+                pendingAudioUri = uri
+                pendingAudioTitle = title
+                trackTitleState.value = title
+                trackArtistState.value = "Waiting for player connection"
+            } else {
+                playLocalAudio(controller, uri, title)
+            }
         }
     }
 
@@ -55,11 +100,20 @@ class MainActivity : ComponentActivity() {
         setContent {
             VyraApp(
                 isPlaying = isPlayingState.value,
+                trackTitle = trackTitleState.value,
+                trackArtist = trackArtistState.value,
+                onOpenAudio = { audioPicker.launch(arrayOf("audio/*")) },
                 onPlayPause = {
                     mediaController?.let { controller ->
                         if (controller.isPlaying) controller.pause()
                         else if (controller.mediaItemCount > 0) controller.play()
                     }
+                },
+                onPrevious = {
+                    mediaController?.let { if (it.hasPreviousMediaItem()) it.seekToPreviousMediaItem() }
+                },
+                onNext = {
+                    mediaController?.let { if (it.hasNextMediaItem()) it.seekToNextMediaItem() }
                 }
             )
         }
@@ -78,6 +132,16 @@ class MainActivity : ComponentActivity() {
                     mediaController = controller
                     controller.addListener(playerListener)
                     isPlayingState.value = controller.isPlaying
+                    controller.currentMediaItem?.mediaMetadata?.let {
+                        it.title?.toString()?.let { title -> trackTitleState.value = title }
+                        it.artist?.toString()?.let { artist -> trackArtistState.value = artist }
+                    }
+                    val queuedUri = pendingAudioUri
+                    if (queuedUri != null) {
+                        playLocalAudio(controller, queuedUri, pendingAudioTitle ?: "Local audio")
+                        pendingAudioUri = null
+                        pendingAudioTitle = null
+                    }
                 }
             }
         }, ContextCompat.getMainExecutor(this))
@@ -90,10 +154,47 @@ class MainActivity : ComponentActivity() {
         controllerFuture = null
         super.onStop()
     }
+
+    private fun playLocalAudio(controller: MediaController, uri: Uri, title: String) {
+        val metadata = MediaMetadata.Builder()
+            .setTitle(title)
+            .setArtist("Local audio")
+            .build()
+        val item = MediaItem.Builder()
+            .setUri(uri)
+            .setMediaMetadata(metadata)
+            .build()
+
+        trackTitleState.value = title
+        trackArtistState.value = "Local audio"
+        controller.setMediaItem(item)
+        controller.prepare()
+        controller.play()
+    }
+
+    private fun queryDisplayName(uri: Uri): String {
+        return runCatching {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (index >= 0) cursor.getString(index) else null
+                    } else null
+                }
+        }.getOrNull()?.takeIf { it.isNotBlank() } ?: "Local audio"
+    }
 }
 
 @Composable
-private fun VyraApp(isPlaying: Boolean, onPlayPause: () -> Unit) {
+private fun VyraApp(
+    isPlaying: Boolean,
+    trackTitle: String,
+    trackArtist: String,
+    onOpenAudio: () -> Unit,
+    onPlayPause: () -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit
+) {
     var selectedTab by remember { mutableStateOf("Home") }
 
     MaterialTheme {
@@ -145,6 +246,25 @@ private fun VyraApp(isPlaying: Boolean, onPlayPause: () -> Unit) {
                         }
                     }
                     Spacer(Modifier.height(25.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Your music", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Play audio stored on this device.", color = Muted, fontSize = 11.sp)
+                        }
+                        Row(
+                            Modifier
+                                .clip(CircleShape)
+                                .background(Violet)
+                                .clickable(onClick = onOpenAudio)
+                                .padding(horizontal = 15.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.FolderOpen, null, tint = Color.White, modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.width(7.dp))
+                            Text("Open audio", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                    Spacer(Modifier.height(22.dp))
                     Text("Made for your mood", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(13.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(13.dp)) {
@@ -155,14 +275,15 @@ private fun VyraApp(isPlaying: Boolean, onPlayPause: () -> Unit) {
                     Spacer(Modifier.height(25.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Recently played", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                        Text("See all", color = Violet, fontSize = 12.sp)
+                        Text("On this device", color = Violet, fontSize = 12.sp)
                     }
                     Spacer(Modifier.height(12.dp))
-                    SongRow("Neon Memories", "VYRA Mix", 0)
-                    SongRow("Falling Through", "Dreamscape", 1)
-                    SongRow("Parallel Lines", "Night Archive", 2)
+                    SongRow("Your local tracks", "Choose an audio file to begin", 0)
                     Spacer(Modifier.weight(1f))
-                    MiniPlayer(isPlaying, onPlayPause)
+                    MiniPlayer(
+                        isPlaying, trackTitle, trackArtist,
+                        onPlayPause, onPrevious, onNext
+                    )
                     Spacer(Modifier.height(10.dp))
                     Row(
                         Modifier
@@ -242,7 +363,14 @@ private fun SongRow(title: String, artist: String, index: Int) {
 }
 
 @Composable
-private fun MiniPlayer(playing: Boolean, onToggle: () -> Unit) {
+private fun MiniPlayer(
+    playing: Boolean,
+    title: String,
+    artist: String,
+    onToggle: () -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit
+) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(19.dp))
             .background(Color(0xCC292438))
@@ -256,10 +384,10 @@ private fun MiniPlayer(playing: Boolean, onToggle: () -> Unit) {
         )
         Spacer(Modifier.width(11.dp))
         Column(Modifier.weight(1f)) {
-            Text("Neon Memories", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            Text("VYRA Mix", color = Muted, fontSize = 10.sp)
+            Text(title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text(artist, color = Muted, fontSize = 10.sp, maxLines = 1)
         }
-        Icon(Icons.Default.SkipPrevious, null, tint = Color.White)
+        Icon(Icons.Default.SkipPrevious, null, tint = Color.White, modifier = Modifier.clickable(onClick = onPrevious))
         Spacer(Modifier.width(12.dp))
         Icon(
             if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -268,6 +396,6 @@ private fun MiniPlayer(playing: Boolean, onToggle: () -> Unit) {
             modifier = Modifier.size(28.dp).clickable { onToggle() }
         )
         Spacer(Modifier.width(8.dp))
-        Icon(Icons.Default.SkipNext, null, tint = Color.White)
+        Icon(Icons.Default.SkipNext, null, tint = Color.White, modifier = Modifier.clickable(onClick = onNext))
     }
 }
