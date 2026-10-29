@@ -41,5 +41,9 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.navigation:navigation-compose:2.8.5")
 
+    // Media3 playback foundation. Keep the version aligned across all Media3 artifacts.
+    implementation("androidx.media3:media3-exoplayer:1.5.1")
+    implementation("androidx.media3:media3-session:1.5.1")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
