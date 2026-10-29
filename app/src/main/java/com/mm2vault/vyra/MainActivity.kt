@@ -72,7 +72,7 @@ class MainActivity : ComponentActivity() {
         controllerFuture = future
         future.addListener({
             runCatching { future.get() }.onSuccess { controller ->
-                if (isFinishing || isDestroyed) {
+                if (controllerFuture !== future || isFinishing || isDestroyed) {
                     MediaController.releaseFuture(future)
                 } else {
                     mediaController = controller
