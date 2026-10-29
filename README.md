@@ -1,13 +1,16 @@
 # VYRA Next
 
-A fresh Android music player project with an original Frosted Glass interface and an independent playback layer.
+A fresh Android music player project with an original Frosted Glass interface and an independent Media3 playback layer.
 
 ## Project status
 
 - Original Jetpack Compose interface and separate app identity: in place.
-- Media3 playback service shell: added; UI controller integration and real-track playback verification are still pending.
-- Legacy VYRA engine: audited; its service is deeply coupled to the original database, dependency injection, queue models, YouTube resolver, and application features. It will be migrated in small verified slices rather than copied as a single file.
-- YouTube stream resolution, background playback controls, and equalizer parity: not yet verified in VYRA Next.
+- Media3 playback service and Compose `MediaController` connection: implemented.
+- Local audio file picker: implemented with Android's Storage Access Framework (`OpenDocument`); selected URI read permission is persisted when the provider supports it.
+- Mini-player title/artist and play/pause/previous/next actions are connected to the active MediaController.
+- Automated Android debug build: verified successfully on GitHub Actions before the local-audio picker change. The picker change is being rebuilt by CI now.
+- Device playback, lock-screen/notification controls, headset/Bluetooth behavior, and process-restart behavior still require physical-device testing.
+- YouTube stream resolution and equalizer parity are not yet integrated or verified.
 
 ## Requirements
 
@@ -17,7 +20,17 @@ A fresh Android music player project with an original Frosted Glass interface an
 
 ## Build
 
-Open the project in Android Studio and sync Gradle. GitHub Actions runs a debug build on pushes and pull requests.
+Open the project in Android Studio and sync Gradle. GitHub Actions runs a debug build on pushes and pull requests. The debug APK is uploaded as the `VYRA-Next-debug` workflow artifact.
+
+## First playback test
+
+1. Install the debug APK on an Android device.
+2. Open VYRA and tap **Open audio**.
+3. Choose an audio file from device storage.
+4. Confirm the selected title appears in the mini-player and audio starts.
+5. Test pause/resume and, after adding more than one queued item, previous/next controls.
+
+The current picker loads one selected local file at a time; a browsable library and queue are future work.
 
 ## Licensing
 
