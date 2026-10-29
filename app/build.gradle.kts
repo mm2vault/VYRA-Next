@@ -42,8 +42,11 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.5")
 
     // Media3 playback foundation. Keep the version aligned across all Media3 artifacts.
-    implementation("androidx.media3:media3-exoplayer:1.5.1")
-    implementation("androidx.media3:media3-session:1.5.1")
+    implementation("androidx.media3:media3-exoplayer:1.10.1")
+    implementation("androidx.media3:media3-session:1.10.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.10.1")
+    implementation("androidx.media3:media3-datasource-okhttp:1.10.1")
+    implementation("com.google.guava:guava:33.6.0-android")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
