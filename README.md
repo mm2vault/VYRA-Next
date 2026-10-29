@@ -12,8 +12,8 @@ A fresh Android music player project with an original Frosted Glass interface an
 ## Requirements
 
 - JDK 17
-- Gradle 8.9+
-- Android SDK 35
+- Gradle 8.13+
+- Android SDK 36
 
 ## Build
 
