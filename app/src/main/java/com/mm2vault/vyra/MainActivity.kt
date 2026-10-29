@@ -96,10 +96,7 @@ private fun VyraApp() {
                     Text("Made for your mood", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(13.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(13.dp)) {
-                        items(listOf("Midnight
-Drive", "Soft
-Focus", "After
-Hours")) { title ->
+                        items(listOf("Midnight\nDrive", "Soft\nFocus", "After\nHours")) { title ->
                             MoodCard(title)
                         }
                     }
