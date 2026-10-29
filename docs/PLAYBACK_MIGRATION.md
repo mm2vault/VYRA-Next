@@ -13,7 +13,7 @@ The goal is to reuse the existing playback behavior where technically and legall
 - `PlayerConnection` is coupled to the upstream Room database, metadata models, queue types, and service binder.
 - Background playback is implemented through the Media3 media-library service and its foreground media-playback notification.
 - Equalizer behavior uses Android audio-effect APIs (Equalizer, BassBoost, LoudnessEnhancer, Virtualizer) and an upstream controller attached to MusicService.
-- YouTube audio stream resolution is present. `YoutubeiStreamRepository` delegates to `YoutubeiResolver` from the upstream `morideobfuscator` module and consumes upstream YouTube login/network/auth state. It is not a simple public YouTube Data API integration.
+- YouTube audio stream resolution is present. `YoutubeiStreamRepository` delegates to `YoutubeiResolver` from the separate `rukamori/morideobfuscator` Git submodule pinned by the old VYRA repository at `47468720f91769320b2a10bb56ebce73568b07f1`. The resolver submodule is GPL-3.0 and its Android library build currently requires Java 21 and compileSdk 37, plus coroutines, OkHttp, and QuickJS. The app-side repository also depends on the old app's YouTube auth/session state (cookies, visitor data, PO tokens, locale, network gatekeeper). It is not a simple public YouTube Data API integration.
 - The upstream app is GPL-3.0. Its file-level copyright and license notices must be preserved in any copied or modified upstream source. This repository includes the upstream GPL-3.0 license text.
 
 ## Important integration constraints
@@ -23,7 +23,8 @@ The goal is to reuse the existing playback behavior where technically and legall
 3. Keep the VYRA-Next application ID (`com.mm2vault.vyra`) and its original Compose UI. The old app ID and old launcher/UI resources must not be brought across.
 4. Preserve GPL-3.0 notices and include corresponding source/license information for any derivative playback components that are distributed.
 5. YouTube stream extraction is subject to upstream implementation compatibility and YouTube changes. It must be tested on-device; do not describe it as guaranteed or as an official YouTube API.
-6. Do not report playback as working until service binding, queue playback, notification controls, background/lock-screen playback, and stream resolution have been tested.
+6. The YouTube resolver cannot be integrated by copying `YoutubeiStreamRepository.kt` alone. Its submodule, Java 21 / Android 37 toolchain, QuickJS runtime, and authentication/session providers must be brought over or replaced by an explicitly designed compatible adapter.
+7. Do not report playback as working until service binding, queue playback, notification controls, background/lock-screen playback, and stream resolution have been tested.
 
 ## Migration sequence
 
@@ -53,6 +54,8 @@ The goal is to reuse the existing playback behavior where technically and legall
 
 - The audit and upstream GPL-3.0 license have been committed.
 - VYRA-Next now has an independent Media3 `PlaybackService` shell and matching service manifest entry.
+- The Compose mini-player is connected to a `MediaController`; it reflects the real service playing state and sends play/pause commands when a media item is loaded.
+- Media3 dependencies have been aligned to upstream version 1.10.1. This requires Android compileSdk 36, so the build toolchain was upgraded accordingly; CI verification for the upgraded toolchain is pending.
 - The current mini-player is still a visual prototype; it is not yet connected to a MediaController or a real track.
 - No upstream playback source has been copied into VYRA-Next yet.
 - The old VYRA repository has not been modified.
