@@ -1,8 +1,15 @@
 package com.mm2vault.vyra
 
 import android.os.Bundle
+import android.content.ComponentName
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.core.content.ContextCompat
+import androidx.media3.common.Player
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
+import com.mm2vault.vyra.playback.PlaybackService
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,16 +40,61 @@ private val Muted = Color(0xFFAAA8BC)
 private val Glass = Color(0x20FFFFFF)
 
 class MainActivity : ComponentActivity() {
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var mediaController: MediaController? = null
+    private val isPlayingState = mutableStateOf(false)
+
+    private val playerListener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            isPlayingState.value = isPlaying
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { VyraApp() }
+        setContent {
+            VyraApp(
+                isPlaying = isPlayingState.value,
+                onPlayPause = {
+                    mediaController?.let { controller ->
+                        if (controller.isPlaying) controller.pause()
+                        else if (controller.mediaItemCount > 0) controller.play()
+                    }
+                }
+            )
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
+        val future = MediaController.Builder(this, token).buildAsync()
+        controllerFuture = future
+        future.addListener({
+            runCatching { future.get() }.onSuccess { controller ->
+                if (isFinishing || isDestroyed) {
+                    MediaController.releaseFuture(future)
+                } else {
+                    mediaController = controller
+                    controller.addListener(playerListener)
+                    isPlayingState.value = controller.isPlaying
+                }
+            }
+        }, ContextCompat.getMainExecutor(this))
+    }
+
+    override fun onStop() {
+        mediaController?.removeListener(playerListener)
+        mediaController = null
+        controllerFuture?.let { MediaController.releaseFuture(it) }
+        controllerFuture = null
+        super.onStop()
     }
 }
 
 @Composable
-private fun VyraApp() {
+private fun VyraApp(isPlaying: Boolean, onPlayPause: () -> Unit) {
     var selectedTab by remember { mutableStateOf("Home") }
-    var isPlaying by remember { mutableStateOf(false) }
 
     MaterialTheme {
         Surface(
@@ -110,7 +162,7 @@ private fun VyraApp() {
                     SongRow("Falling Through", "Dreamscape", 1)
                     SongRow("Parallel Lines", "Night Archive", 2)
                     Spacer(Modifier.weight(1f))
-                    MiniPlayer(isPlaying) { isPlaying = !isPlaying }
+                    MiniPlayer(isPlaying, onPlayPause)
                     Spacer(Modifier.height(10.dp))
                     Row(
                         Modifier
