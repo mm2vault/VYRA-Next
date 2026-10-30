@@ -1,6 +1,18 @@
 package com.mm2vault.vyra
 
 import android.content.ComponentName
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.app.DownloadManager
+import android.os.Environment
+import android.provider.Settings
+import android.widget.Toast
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
@@ -49,6 +61,25 @@ class MainActivity : ComponentActivity() {
     private var mediaController: MediaController? = null
     private var pendingAudioUri: Uri? = null
     private var pendingAudioTitle: String? = null
+    private var updateDownloadId: Long = -1L
+    private var receiverRegistered = false
+
+    private val downloadReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L) != updateDownloadId) return
+            val uri = (getSystemService(DOWNLOAD_SERVICE) as DownloadManager).getUriForDownloadedFile(updateDownloadId)
+            if (uri != null) {
+                val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                runCatching { startActivity(installIntent) }
+                    .onFailure { Toast.makeText(this@MainActivity, "Could not open Android installer", Toast.LENGTH_LONG).show() }
+            } else {
+                Toast.makeText(this@MainActivity, "APK download failed", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     private val isPlayingState = mutableStateOf(false)
     private val trackTitleState = mutableStateOf("No track selected")
@@ -97,12 +128,18 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        ContextCompat.registerReceiver(
+            this, downloadReceiver, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        receiverRegistered = true
         setContent {
             VyraApp(
                 isPlaying = isPlayingState.value,
                 trackTitle = trackTitleState.value,
                 trackArtist = trackArtistState.value,
                 onOpenAudio = { audioPicker.launch(arrayOf("audio/*")) },
+                onCheckUpdates = { checkForUpdates() },
                 onPlayPause = {
                     mediaController?.let { controller ->
                         if (controller.isPlaying) controller.pause()
@@ -145,6 +182,44 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    override fun onDestroy() {
+        if (receiverRegistered) unregisterReceiver(downloadReceiver)
+        super.onDestroy()
+    }
+
+    private fun checkForUpdates() {
+        Toast.makeText(this, "Checking for VYRA updates...", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { UpdateManager.check(this@MainActivity) }
+            }
+            result.onSuccess { check ->
+                when (check) {
+                    is UpdateCheckResult.UpToDate -> {
+                        Toast.makeText(this@MainActivity, "VYRA is up to date", Toast.LENGTH_LONG).show()
+                    }
+                    is UpdateCheckResult.Available -> {
+                        if (!packageManager.canRequestPackageInstalls()) {
+                            Toast.makeText(this@MainActivity, "Allow VYRA to install updates, then check again", Toast.LENGTH_LONG).show()
+                            startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+                        } else {
+                            val request = DownloadManager.Request(Uri.parse(check.apkUrl))
+                                .setTitle("VYRA " + check.version)
+                                .setDescription("Downloading VYRA update")
+                                .setMimeType("application/vnd.android.package-archive")
+                                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                                .setDestinationInExternalFilesDir(this@MainActivity, Environment.DIRECTORY_DOWNLOADS, "VYRA-" + check.version + ".apk")
+                            updateDownloadId = (getSystemService(DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+                            Toast.makeText(this@MainActivity, "Update downloading. Android will ask you to install it.", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            }.onFailure {
+                Toast.makeText(this@MainActivity, "Update check failed: " + (it.message ?: "network error"), Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     override fun onStop() {
@@ -191,6 +266,7 @@ private fun VyraApp(
     trackTitle: String,
     trackArtist: String,
     onOpenAudio: () -> Unit,
+    onCheckUpdates: () -> Unit,
     onPlayPause: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit
@@ -223,6 +299,8 @@ private fun VyraApp(
                             Text("VYRA", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Black, letterSpacing = 3.sp)
                             Text("YOUR SOUND. YOUR SPACE.", color = Muted, fontSize = 9.sp, letterSpacing = 2.sp)
                         }
+                        Text("Update", color = Violet, fontSize = 12.sp, modifier = Modifier.clickable(onClick = onCheckUpdates))
+                        Spacer(Modifier.width(12.dp))
                         GlassIcon(Icons.Default.NotificationsNone)
                         Spacer(Modifier.width(10.dp))
                         GlassIcon(Icons.Default.AccountCircle)
