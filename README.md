@@ -35,3 +35,13 @@ The current picker loads one selected local file at a time; a browsable library 
 ## Licensing
 
 The original VYRA Next UI and app scaffolding are developed for this repository. The upstream playback project is GPL-3.0; the upstream license text is included in `LICENSE`. Any copied or modified upstream playback source must retain its original copyright/license headers, and distributed derivative source must comply with GPL-3.0.
+
+
+## Signed APK and in-app updates
+
+- The app's **Update** action checks the latest public GitHub Release and looks for a direct `.apk` asset.
+- When a newer release exists, VYRA downloads the APK with Android DownloadManager and opens Android's package installer. Android still requires the user to approve installation.
+- Release APKs must always use the same package ID (`com.mm2vault.vyra`) and the same private signing key. Never regenerate or replace that key after publishing the first signed release.
+- The signed release workflow expects these GitHub Actions repository secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`.
+- A debug APK is signed with Android's debug key and **cannot be updated in-place to the release-signed app**. For the first move from debug to release, uninstall the debug build once, then install the signed Release APK. Later signed releases update over the existing signed app.
+- The GitHub Release contains a direct `app-release.apk` asset, not a ZIP containing the APK.
